@@ -1,6 +1,6 @@
 #!/bin/bash
 
-KAFKA_HOME="/home/tom/Code/sys/kafka/kafka_2.13-3.4.0"
+KAFKA_HOME="/opt/kafka_2.13-3.4.0"
 ZTMPFILE="/tmp/zookeeper"
 
 if [ -f "$ZTMPFILE" ]; then
