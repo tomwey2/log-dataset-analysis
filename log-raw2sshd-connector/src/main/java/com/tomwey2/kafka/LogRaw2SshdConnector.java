@@ -16,34 +16,33 @@ import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
-/**
- * Converter raw log data to alert messages
- */
-public class LogRaw2AlertConnector {
-    private static final Logger logger = LoggerFactory.getLogger(LogRaw2AlertConnector.class);
+public class LogRaw2SshdConnector {
+    private static final Logger logger = LoggerFactory.getLogger(LogRaw2SshdConnector.class);
     private volatile boolean keepConsuming = true;
     final private Producer<String, String> producer;
+    final private SshdLogStateMachine stateMachine;
 
     private static Properties buildProperties() {
         Properties props = new Properties();
-        props.put("application.id", "log-raw2alert-connector");
+        props.put("application.id", "log-raw2sshd-converter");
         props.put("bootstrap.servers", "localhost:9092");
         props.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
         props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
         props.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer");
         props.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer");
         props.put("input.topic.name", "log-raw-data");
-        props.put("output.topic.name", "log-alert-data");
-        props.put("group.id", "log-raw2alert-connector");
+        props.put("output.topic.name", "log-sshd-data");
+        props.put("group.id", "LogRaw2SshdConnector");
         return props;
     }
 
-    public LogRaw2AlertConnector() {
+    public LogRaw2SshdConnector() {
         this.producer = new KafkaProducer<>(buildProperties());
+        this.stateMachine = new SshdLogStateMachine();
     }
 
     public static void main(String[] args) {
-        LogRaw2AlertConnector logRaw2SshdConnector = new LogRaw2AlertConnector();
+        LogRaw2SshdConnector logRaw2SshdConnector = new LogRaw2SshdConnector();
         logRaw2SshdConnector.consume(buildProperties());
         Runtime.getRuntime().addShutdownHook(new Thread(logRaw2SshdConnector::shutdown));
     }
@@ -56,14 +55,15 @@ public class LogRaw2AlertConnector {
             while (keepConsuming) {
                 ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(250));
                 for (ConsumerRecord<String, String> record: records) {
-                    AlertEvent alertEvent = AlertEventFactory.create(record.value());
-                    if (alertEvent != null) {
-                        logger.info(AlertEventFactory.toJsonString(alertEvent));
+                    SshdLogStateMachine.States state = stateMachine.transform(record.key(), record.value());
+                    if (state == SshdLogStateMachine.States.finished) {
+                        logger.info(SshdEventFactory.toJsonString(stateMachine.getSshdEvent()));
                         Future<RecordMetadata> metadata = produce(
                                 props.getProperty("output.topic.name"),
                                 record.key(),
-                                AlertEventFactory.toJsonString(alertEvent));
+                                SshdEventFactory.toJsonString(stateMachine.getSshdEvent()));
                         printMetadata(metadata);
+                        stateMachine.reset();
                     }
                 }
             }
@@ -92,4 +92,5 @@ public class LogRaw2AlertConnector {
         producer.close();
         keepConsuming = false;
     }
+
 }
