@@ -13,6 +13,7 @@
         <module>log-raw-data-producer</module>
         <module>log-raw2alert-connector</module>
         <module>log-raw2sshd-connector</module>
+        <module>log-data-consumer</module>
     </modules>
 
     <properties>
